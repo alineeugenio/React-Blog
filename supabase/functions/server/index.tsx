@@ -13,7 +13,7 @@ app.use(
   "/*",
   cors({
     origin: "*",
-    allowHeaders: ["Content-Type", "Authorization"],
+    allowHeaders: ["Content-Type", "Authorization", "X-Author-Email"],
     allowMethods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
     exposeHeaders: ["Content-Length"],
     maxAge: 600,
@@ -27,16 +27,26 @@ app.get("/make-server-9a700259/health", (c) => {
 
 const base = "/make-server-9a700259";
 const uuid = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 type Story = { id: string; authorId: string; authorName: string; title: string; body: string; createdAt: string; updatedAt: string };
 type StoryComment = { id: string; storyId: string; name: string; email: string; body: string; approved: boolean; createdAt: string };
 const key = (id: string) => `story:${id}`;
 
 async function authenticatedUser(c: any) {
   const token = c.req.header("Authorization")?.match(/^Bearer (.+)$/)?.[1];
-  if (!token) return null;
-  const client = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
-  const { data, error } = await client.auth.getUser(token);
-  return error ? null : data.user;
+  if (token) {
+    const client = createClient(Deno.env.get("SUPABASE_URL")!, Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!);
+    const { data, error } = await client.auth.getUser(token);
+    if (!error) return data.user;
+  }
+  const email = c.req.header("X-Author-Email")?.trim().toLowerCase();
+  if (!email || !emailPattern.test(email)) return null;
+  const response = await fetch("https://jsonplaceholder.typicode.com/users");
+  if (!response.ok) return null;
+  const users = await response.json() as Array<{ id: number; name: string; email: string }>;
+  const author = users.find((user) => user.email.trim().toLowerCase() === email);
+  if (!author) return null;
+  return { id: String(author.id), email: author.email, user_metadata: { name: author.name } };
 }
 
 function storyInput(input: any) {
@@ -84,7 +94,7 @@ app.post(`${base}/stories/:id/comments`, async (c) => {
 });
 
 app.get(`${base}/authors/:id/stories`, async (c) => {
-  if (!uuid.test(c.req.param("id"))) return c.json({ error: "Não encontrado" }, 404);
+  if (!uuid.test(c.req.param("id")) && !emailPattern.test(c.req.param("id")) && !/^[1-9]\d*$/.test(c.req.param("id"))) return c.json({ error: "Não encontrado" }, 404);
   const stories = await kv.getByPrefix("story:") as Story[];
   return c.json(stories.filter((story) => story.authorId === c.req.param("id")).sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
 });

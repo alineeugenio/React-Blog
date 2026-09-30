@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import {
-  DashboardPage, EditorPage, LoginPage,
+  DashboardPage, EditorPage, LoginPage, LoginPanel,
   dashboardAction, dashboardLoader, editorAction, editorLoader, newStoryLoader,
 } from './author/AuthorArea'
 import { storyRequest, type Story } from './lib/supabase'
@@ -202,6 +202,7 @@ function Home() {
           <p className="eyebrow"><span className="inline-block h-1.5 w-1.5 rounded-full bg-[#ba7654]" /> UM ESPAÇO PARA IDEIAS</p>
           <h1 className="font-display mt-8 text-[clamp(56px,6.2vw,94px)] leading-[0.99] font-medium tracking-[-0.065em]">Histórias para<br /><span className="italic text-[#a86647]">ler com calma.</span></h1>
           <p className="mt-8 max-w-[440px] text-[16px] leading-[1.85] text-[#6d796f]">Uma coleção de pensamentos, descobertas e perspectivas. Encontre uma história, fique por uma conversa.</p>
+          <div className="mt-7 max-w-[440px]"><LoginPanel compact /></div>
           <a href="#historias" className="mt-9 inline-flex items-center gap-4 rounded-full bg-[#294b39] px-7 py-4 text-sm font-semibold text-white transition-colors hover:bg-[#1c382a]">Explorar histórias <ArrowIcon /></a>
           <div className="mt-16 flex items-center gap-6 border-t border-[#dce0d5] pt-6 text-xs text-[#879187]"><span><strong className="mr-2 font-display text-2xl font-medium text-[#24372e]">{posts.length + stories.length}</strong> histórias</span><span className="h-5 w-px bg-[#dce0d5]" /><span><strong className="mr-2 font-display text-2xl font-medium text-[#24372e]">{authors.length}</strong> autores da coleção</span></div>
         </div>
