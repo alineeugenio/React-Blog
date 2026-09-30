@@ -1,0 +1,10 @@
+{
+  "description": "This web application allows users to interact with a mock API for managing posts, comments, and users, streamlining content management and testing.",
+  "robots": {
+    "index": false
+  },
+  "accessibility": {
+    "addBypassLinks": false,
+    "ignoreReducedMotion": false
+  }
+}

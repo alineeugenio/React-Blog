@@ -1,0 +1,46 @@
+@import url('https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&display=swap');
+@import 'tailwindcss';
+
+body {
+  font-family: 'DM Sans', sans-serif;
+}
+
+.font-display {
+  font-family: Georgia, 'Times New Roman', serif;
+}
+
+.eyebrow {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  color: #a86647;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+}
+
+.form-label {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  font-size: 13px;
+  font-weight: 600;
+  color: #334b3b;
+}
+
+.form-input {
+  width: 100%;
+  border: 1px solid #ccd5c8;
+  border-radius: 2px;
+  background: #f8f9f4;
+  padding: 0.85rem 1rem;
+  color: #24372e;
+  font-size: 14px;
+  font-weight: 400;
+  outline: none;
+}
+
+.form-input:focus {
+  border-color: #446c50;
+  box-shadow: 0 0 0 2px #446c5026;
+}
