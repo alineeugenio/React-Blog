@@ -21,6 +21,7 @@ import {
 
 type Post = { id: number; userId: number; title: string; body: string }
 type Author = { id: number; name: string; username: string; email: string; company: { name: string } }
+type Todo = { id: number; userId: number; title: string; completed: boolean }
 type Comment = { id: number; postId: number; name: string; email: string; body: string }
 type StoryComment = { id: string; name: string; body: string; createdAt: string }
 type CommentResult = { error?: string; success?: boolean }
@@ -101,6 +102,14 @@ async function authorLoader({ params }: LoaderFunctionArgs) {
   return { author, posts }
 }
 
+async function todosLoader() {
+  const [todos, users] = await Promise.all([
+    getJson<Todo[]>('/todos'),
+    getJson<Author[]>('/users'),
+  ])
+  return { todos, users }
+}
+
 async function commentAction({ request, params }: ActionFunctionArgs): Promise<CommentResult> {
   const postId = idFromParams(params.postId)
   const data = await request.formData()
@@ -139,9 +148,10 @@ function RootLayout() {
       <header className="border-b border-[#e5e5dc] bg-[#f8f7f2]">
         <div className="mx-auto flex min-h-[82px] max-w-[1320px] flex-col items-start justify-center gap-4 px-6 py-4 sm:flex-row sm:items-center sm:justify-between md:px-10">
           <Link to="/" className="font-display text-[22px] font-bold leading-tight tracking-[-0.04em] lg:text-[28px]" aria-label="Histórias que prendem sua imaginação — página inicial">Histórias que prendem sua imaginação</Link>
-          <nav aria-label="Navegação principal" className="flex items-center gap-7 text-[13px] font-semibold md:gap-10">
+          <nav aria-label="Navegação principal" className="flex items-center gap-3 text-[13px] font-semibold sm:gap-7 md:gap-10">
             <NavLink to="/" end className={({ isActive }) => `transition-colors hover:text-[#a35c3a] ${isActive ? 'text-[#a35c3a]' : ''}`}>Início</NavLink>
             <Link to="/#historias" className="transition-colors hover:text-[#a35c3a]">Histórias</Link>
+            <NavLink to="/tarefas" className={({ isActive }) => `transition-colors hover:text-[#a35c3a] ${isActive ? 'text-[#a35c3a]' : ''}`}>Tarefas</NavLink>
             <span className="hidden h-4 w-px bg-[#d8d8ce] xl:block" />
             <Link to="/painel" className="text-[#a35c3a] transition-colors hover:text-[#294b39]">Área do autor</Link>
           </nav>
@@ -262,6 +272,150 @@ function AuthorPage() {
   return <main className="mx-auto max-w-[1320px] px-6 pt-10 md:px-10"><Link to="/" className="text-sm font-medium text-[#69796e] hover:text-[#a35c3a]">← Voltar às histórias</Link><section className="mt-16 border-b border-[#dce0d5] pb-16"><p className="eyebrow">CONHEÇA QUEM ESCREVE</p><div className="mt-5 flex flex-wrap items-center gap-6"><div className="flex h-20 w-20 items-center justify-center rounded-full bg-[#dfe7d9] font-display text-4xl text-[#365644]">{author.name.charAt(0)}</div><h1 className="font-display text-[clamp(48px,6vw,76px)] leading-none tracking-[-0.055em]">{author.name}</h1></div><p className="mt-7 max-w-xl text-[#6d796f]">Explore todas as histórias publicadas por {author.name}.</p></section><section className="pt-16"><div className="mb-12 flex items-end justify-between gap-4"><div><p className="eyebrow">TODAS AS HISTÓRIAS</p><h2 className="font-display mt-3 text-4xl tracking-[-0.04em]">Publicações do autor<span className="text-[#ba7654]">.</span></h2></div><span className="text-sm text-[#79857a]">{posts.length} posts</span></div><div className="grid gap-x-9 gap-y-12 md:grid-cols-2 lg:grid-cols-3">{posts.map((post) => <PostCard key={post.id} post={post} author={author} />)}</div></section></main>
 }
 
+function TodosPage() {
+  const { todos: initialTodos, users } = useLoaderData<typeof todosLoader>()
+  const [todos, setTodos] = useState(initialTodos)
+  const [status, setStatus] = useState<'all' | 'pending' | 'completed'>('all')
+  const [search, setSearch] = useState('')
+  const [activeUserId, setActiveUserId] = useState(users[0]?.id ?? 0)
+  const [busyIds, setBusyIds] = useState<Set<number>>(new Set())
+  const [error, setError] = useState('')
+  const normalizedSearch = search.trim().toLocaleLowerCase('pt-BR')
+  const userTodos = todos.filter((todo) => todo.userId === activeUserId)
+  const filteredTodos = userTodos.filter((todo) => {
+    const matchesStatus = status === 'all' || todo.completed === (status === 'completed')
+    return matchesStatus && todo.title.toLocaleLowerCase('pt-BR').includes(normalizedSearch)
+  })
+  const completedCount = todos.filter((todo) => todo.completed).length
+  const activeUser = users.find((user) => user.id === activeUserId)
+
+  async function toggleTodo(todo: Todo) {
+    const completed = !todo.completed
+    setError('')
+    setBusyIds((current) => new Set(current).add(todo.id))
+    try {
+      const response = await fetch(`${API}/todos/${todo.id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json; charset=UTF-8' },
+        body: JSON.stringify({ completed }),
+      })
+      if (!response.ok) throw new Error('Falha ao atualizar tarefa')
+      const updatedTodo = await response.json() as Partial<Todo>
+      setTodos((current) => current.map((item) => item.id === todo.id
+        ? { ...item, completed: typeof updatedTodo.completed === 'boolean' ? updatedTodo.completed : completed }
+        : item))
+    } catch {
+      setError('Não foi possível atualizar a tarefa. Tente novamente.')
+    } finally {
+      setBusyIds((current) => {
+        const next = new Set(current)
+        next.delete(todo.id)
+        return next
+      })
+    }
+  }
+
+  async function deleteTodo(todo: Todo) {
+    setError('')
+    setBusyIds((current) => new Set(current).add(todo.id))
+    try {
+      const response = await fetch(`${API}/todos/${todo.id}`, { method: 'DELETE' })
+      if (!response.ok) throw new Error('Falha ao excluir tarefa')
+      setTodos((current) => current.filter((item) => item.id !== todo.id))
+    } catch {
+      setError('Não foi possível excluir a tarefa. Tente novamente.')
+    } finally {
+      setBusyIds((current) => {
+        const next = new Set(current)
+        next.delete(todo.id)
+        return next
+      })
+    }
+  }
+
+  function handleTabKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
+    const currentIndex = users.findIndex((user) => user.id === activeUserId)
+    let nextIndex = currentIndex
+    if (event.key === 'ArrowRight') nextIndex = (currentIndex + 1) % users.length
+    else if (event.key === 'ArrowLeft') nextIndex = (currentIndex - 1 + users.length) % users.length
+    else if (event.key === 'Home') nextIndex = 0
+    else if (event.key === 'End') nextIndex = users.length - 1
+    else return
+    event.preventDefault()
+    setActiveUserId(users[nextIndex].id)
+    document.getElementById(`user-tab-${users[nextIndex].id}`)?.focus()
+  }
+
+  return (
+    <main className="mx-auto max-w-[1320px] px-6 py-12 md:px-10 md:py-16">
+      <section className="border-b border-[#dce0d5] pb-10">
+        <p className="eyebrow">ORGANIZAÇÃO JSONPLACEHOLDER</p>
+        <div className="mt-5 flex flex-wrap items-end justify-between gap-7">
+          <div>
+            <h1 className="font-display text-[clamp(48px,6vw,76px)] leading-none tracking-[-0.055em]">Tarefas<span className="text-[#ba7654]">.</span></h1>
+            <p className="mt-5 max-w-xl text-[15px] leading-7 text-[#6d796f]">Todas as tarefas, organizadas por usuário.</p>
+          </div>
+          <p className="text-sm text-[#79857a]"><strong className="font-display mr-2 text-3xl font-medium text-[#24372e]">{completedCount}/{todos.length}</strong> concluídas</p>
+        </div>
+      </section>
+
+      <section className="border-b border-[#dce0d5] py-6" aria-label="Filtros de tarefas">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <label className="relative block w-full sm:max-w-sm">
+            <span className="sr-only">Buscar tarefa</span>
+            <input value={search} onChange={(event) => setSearch(event.target.value)} className="form-input !bg-white !py-3 !pl-10" placeholder="Buscar tarefa..." type="search" />
+            <svg aria-hidden="true" className="absolute top-1/2 left-3 -translate-y-1/2 text-[#879187]" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.5 4.5" /></svg>
+          </label>
+          <div className="flex w-fit border border-[#d4dacf]" role="group" aria-label="Filtrar por status">
+            {([
+              ['all', 'Todas'],
+              ['pending', 'Pendentes'],
+              ['completed', 'Concluídas'],
+            ] as const).map(([value, label]) => (
+              <button key={value} type="button" aria-pressed={status === value} onClick={() => setStatus(value)} className={`px-4 py-2.5 text-xs font-semibold transition-colors ${status === value ? 'bg-[#294b39] text-white' : 'text-[#5f7063] hover:bg-[#edf0e8]'}`}>
+                {label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <div className="mt-8 overflow-x-auto border-b border-[#dce0d5]" role="tablist" aria-label="Tarefas por usuário">
+        <div className="flex min-w-max gap-1">
+          {users.map((user) => {
+            const selected = user.id === activeUserId
+            return <button key={user.id} id={`user-tab-${user.id}`} type="button" role="tab" aria-selected={selected} aria-controls={`user-panel-${user.id}`} tabIndex={selected ? 0 : -1} onClick={() => setActiveUserId(user.id)} onKeyDown={handleTabKeyDown} className={`border-b-2 px-4 py-3 text-left transition-colors ${selected ? 'border-[#a86647] text-[#294b39]' : 'border-transparent text-[#79857a] hover:text-[#294b39]'}`}><span className="block text-sm font-semibold">{user.name}</span><span className="mt-1 block text-[10px] font-bold tracking-[0.12em] uppercase">Usuário {user.id}</span></button>
+          })}
+        </div>
+      </div>
+
+      {activeUser && <section id={`user-panel-${activeUser.id}`} role="tabpanel" aria-labelledby={`user-tab-${activeUser.id}`} className="py-8">
+        <div className="mb-3 flex flex-wrap items-baseline justify-between gap-2">
+          <h2 className="font-display text-[25px] tracking-[-0.025em]">{activeUser.name}<span className="ml-3 font-sans text-xs font-semibold tracking-[0.12em] text-[#a86647] uppercase">Usuário {activeUser.id}</span></h2>
+          <p className="text-xs text-[#79857a]">{userTodos.filter((todo) => todo.completed).length}/{userTodos.length} concluídas</p>
+        </div>
+        {error && <p role="alert" className="mb-4 text-sm text-[#a34335]">{error}</p>}
+        <ul className="divide-y divide-[#e8e9e1] border-t border-[#e8e9e1]">
+          {filteredTodos.map((todo) => (
+            <li key={todo.id} className="flex items-start justify-between gap-4 py-3.5">
+              <div className="flex min-w-0 items-start gap-3">
+                <button type="button" aria-label={`Marcar "${todo.title}" como ${todo.completed ? 'pendente' : 'concluída'}`} aria-pressed={todo.completed} aria-busy={busyIds.has(todo.id)} disabled={busyIds.has(todo.id)} onClick={() => toggleTodo(todo)} className={`mt-0.5 flex h-[22px] w-[22px] shrink-0 items-center justify-center border transition-colors focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#294b39] disabled:cursor-wait disabled:opacity-60 ${todo.completed ? 'border-[#52735b] bg-[#52735b] text-white' : 'border-[#b9c3b7] text-transparent hover:border-[#52735b]'}`}>
+                  {todo.completed && <svg aria-hidden="true" width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="2"><path d="m3 8 3 3 7-7" /></svg>}
+                </button>
+                <span className={`min-w-0 text-sm leading-6 ${todo.completed ? 'text-[#879187] line-through' : 'text-[#39483c]'}`}>{todo.title}</span>
+              </div>
+              <button type="button" aria-label={`Excluir tarefa: ${todo.title}`} aria-busy={busyIds.has(todo.id)} disabled={busyIds.has(todo.id)} onClick={() => deleteTodo(todo)} className="flex h-8 w-8 shrink-0 items-center justify-center text-[#a34335] transition-colors hover:bg-[#f3e8e4] focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[#a34335] disabled:cursor-wait disabled:opacity-50">
+                <svg aria-hidden="true" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18M8 6V4h8v2m3 0-1 14H6L5 6m4 4v6m6-6v6" /></svg>
+              </button>
+            </li>
+          ))}
+        </ul>
+        {filteredTodos.length === 0 && <p className="py-16 text-center text-sm text-[#6d796f]">Nenhuma tarefa encontrada com esses filtros.</p>}
+      </section>}
+    </main>
+  )
+}
+
 function StoryPage() {
   const { story, comments } = useLoaderData<typeof storyLoader>()
   const result = useActionData<CommentResult>()
@@ -295,6 +449,7 @@ export const router = createBrowserRouter([
       { path: 'autores/:authorId', loader: authorLoader, Component: AuthorPage },
       { path: 'historias/:storyId', loader: storyLoader, action: storyCommentAction, Component: StoryPage },
       { path: 'escritores/:writerId', loader: writerLoader, Component: WriterPage },
+      { path: 'tarefas', loader: todosLoader, Component: TodosPage },
       { path: 'entrar', Component: LoginPage },
       { path: 'painel', loader: dashboardLoader, action: dashboardAction, Component: DashboardPage },
       { path: 'painel/novo', loader: newStoryLoader, action: editorAction, Component: EditorPage },
